@@ -1,3 +1,4 @@
+import { fileUrl } from '../api.js';
 import { fontStack, safeUrl } from '../lib/blocks.js';
 
 // Tampilan isi satu blok. Dipakai oleh editor (interactive=false) dan halaman publik (interactive=true).
@@ -32,7 +33,7 @@ export default function BlockContent({ block, assetsById, interactive = false })
       if (!asset) return <div className="img-missing">Pilih gambar</div>;
       return (
         <img
-          src={asset.url}
+          src={fileUrl(asset.url)}
           alt={asset.name}
           draggable={false}
           style={{

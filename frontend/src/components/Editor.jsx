@@ -3,6 +3,7 @@ import Canvas from './Canvas.jsx';
 import LayerPanel from './LayerPanel.jsx';
 import PropsPanel from './PropsPanel.jsx';
 import { ColorField, NumberField } from './ui.jsx';
+import { fileUrl } from '../api.js';
 import { MAX_BLOCKS, createBlock } from '../lib/blocks.js';
 import { addBlock, duplicateBlock, moveZ, removeBlock, updateBlock, updateProps } from '../lib/layoutOps.js';
 
@@ -30,6 +31,26 @@ const Editor = forwardRef(function Editor(
   const [zoom, setZoom] = useState(null);
   const [snap, setSnap] = useState(false);
   // Pratinjau animasi hanya untuk editor; tidak ikut tersimpan. Mode remix animasi langsung menyala.
+  const [previewAnim, setPreviewAnim] = useState(false);
+  const [remixMounted, setRemixMounted] = useState(false);
+  const [noAnim, setNoAnim] = useState(false);
+  useEffect(() => {
+    if (mode !== 'remix') return undefined;
+    const t = setTimeout(() => setRemixMounted(true), 150);
+    return () => clearTimeout(t);
+  }, [mode]);
+  const animOn = !noAnim && (mode === 'remix' ? remixMounted : previewAnim);
+
+  // Halaman publik memakai IntersectionObserver agar entrance jalan saat blok masuk layar.
+  // Editor cukup menandai semua blok saat pratinjau dinyalakan, supaya drag tidak terpengaruh.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    stage.querySelectorAll('[data-anim-in]').forEach((el) => {
+      if (animOn) el.classList.add('is-in');
+      else el.classList.remove('is-in');
+    });
+  }, [animOn]);
   const [category, setCategory] = useState('all');
   const [wrapWidth, setWrapWidth] = useState(900);
   const wrapRef = useRef(null);
@@ -40,6 +61,7 @@ const Editor = forwardRef(function Editor(
     ref,
     () => ({
       getStage: () => stageRef.current,
+      setAnimating: (on) => setNoAnim(!on),
     }),
     []
   );
@@ -209,6 +231,16 @@ const Editor = forwardRef(function Editor(
             <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
             <span>Snap</span>
           </label>
+          {mode === 'admin' && (
+            <button
+              type="button"
+              className={previewAnim ? 'on' : ''}
+              onClick={() => setPreviewAnim((v) => !v)}
+              title="Nyalakan animasi blok sementara, tanpa menyimpan apa pun"
+            >
+              {previewAnim ? '■ Stop pratinjau' : '▶ Pratinjau animasi'}
+            </button>
+          )}
         </div>
         <div className="topbar-group">{topRight}</div>
       </header>
@@ -241,7 +273,7 @@ const Editor = forwardRef(function Editor(
               {shownAssets.map((a) => (
                 <div key={a.id} className="asset">
                   <button type="button" onClick={() => addImage(a)} title={`Tambahkan: ${a.name}`}>
-                    <img src={a.url} alt={a.name} draggable={false} />
+                    <img src={fileUrl(a.url)} alt={a.name} draggable={false} />
                   </button>
                   {onDeleteAsset && (
                     <button type="button" className="asset-del" title="Hapus asset" onClick={() => onDeleteAsset(a)}>
@@ -280,6 +312,7 @@ const Editor = forwardRef(function Editor(
             snap={snap}
             mode={mode}
             stageRef={stageRef}
+            animOn={animOn}
           />
         </main>
 

@@ -405,6 +405,256 @@ input[type='checkbox'] {
   border-radius: 8px;
 }
 
+/* ------------------------------------------------------------ animasi blok (preset, CSS murni)
+   Blok luar: posisi + rotate bawaan. .anim di dalamnya yang bergerak, jadi rotasi tetap utuh.
+   Gerakan pakai sumbu layar (transform pada .anim, bukan digabung dengan rotate). */
+.anim {
+  width: 100%;
+  height: 100%;
+}
+.anim-block {
+  --dur: calc(1s / var(--anim-speed, 1));
+  --anim-delay: 0s;
+}
+.stage.anim-on .anim-block > .anim {
+  animation-delay: var(--anim-delay);
+  animation-play-state: paused; /* baik loop maupun entrance baru jalan setelah tanda .is-in */
+}
+.stage.anim-on .anim-block > .anim.is-in {
+  animation-play-state: running;
+}
+
+@keyframes pc-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes pc-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pc-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+@keyframes pc-wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  25% { transform: rotate(3deg); }
+  50% { transform: rotate(-2deg); }
+  75% { transform: rotate(2deg); }
+}
+@keyframes pc-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pc-slide-up {
+  from { opacity: 0; transform: translateY(48px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pc-zoom-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.stage.anim-on .anim-float > .anim { animation: pc-float calc(var(--dur) * 3.5) ease-in-out infinite; }
+.stage.anim-on .anim-spin > .anim { animation: pc-spin calc(var(--dur) * 9) linear infinite; }
+.stage.anim-on .anim-pulse > .anim { animation: pc-pulse calc(var(--dur) * 2.2) ease-in-out infinite; }
+.stage.anim-on .anim-wiggle > .anim { animation: pc-wiggle calc(var(--dur) * 2.5) ease-in-out infinite; }
+
+/* Entrance: jalan sekali. Sebelum terlihat blok transparan (tapi tetap mengambil ruang). */
+.stage.anim-on:not(.editing) .anim-fade-in:not(:has(> .anim.is-in)) > .anim,
+.stage.anim-on:not(.editing) .anim-slide-up:not(:has(> .anim.is-in)) > .anim,
+.stage.anim-on:not(.editing) .anim-zoom-in:not(:has(> .anim.is-in)) > .anim {
+  opacity: 0;
+}
+.stage.anim-on .anim-fade-in > .anim { animation: pc-fade-in var(--dur) ease-out 1 both; }
+.stage.anim-on .anim-slide-up > .anim { animation: pc-slide-up var(--dur) ease-out 1 both; }
+.stage.anim-on .anim-zoom-in > .anim { animation: pc-zoom-in var(--dur) ease-out 1 both; }
+
+/* Editor: entrance langsung tampil apa adanya (tanpa IntersectionObserver), hanya bergerak sekali
+   saat pratinjau dinyalakan; blok yang sudah terlihat tidak disembunyikan. */
+.stage.anim-on.editing .anim-fade-in > .anim,
+.stage.anim-on.editing .anim-slide-up > .anim,
+.stage.anim-on.editing .anim-zoom-in > .anim {
+  animation-play-state: running;
+  animation-delay: 0s; /* jeda menunggu scroll tidak relevan di editor */
+}
+
+/* Hormati preferensi pengguna: matikan semua animasi, tampilkan blok apa adanya. */
+@media (prefers-reduced-motion: reduce) {
+  .stage.anim-on .anim-block > .anim {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    animation-play-state: running !important;
+  }
+}
+
+
+/* ------------------------------------------------------------ modal template */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 6, 9, 0.72);
+}
+.modal {
+  width: min(860px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 14px;
+}
+.modal h3 {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+.tpl-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  text-align: left;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.tpl-card:hover {
+  border-color: var(--accent2);
+}
+.tpl-card.on {
+  border-color: var(--accent);
+}
+.tpl-card strong {
+  font-family: 'Space Grotesk', sans-serif;
+}
+.tpl-card p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.tpl-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+/* ------------------------------------------------------------ panel kanan */
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.tabs button {
+  padding: 6px 4px;
+  font-size: 13px;
+}
+
+.props {
+  display: grid;
+  gap: 12px;
+}
+.props hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 4px 0;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.row-actions {
+  display: flex;
+  gap: 8px;
+}
+.row-actions button {
+  flex: 1;
+}
+
+.layer-tools {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.layer-tools button {
+  flex: 1;
+  padding: 5px 4px;
+  font-size: 12px;
+}
+.layers ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.layer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--panel2);
+  cursor: pointer;
+  font-size: 13px;
+}
+.layer.selected {
+  border-color: var(--accent);
+}
+.layer.drop-target {
+  border-color: var(--accent2);
+  border-style: dashed;
+}
+.layer.is-hidden .layer-name {
+  opacity: 0.45;
+}
+.layer-icon {
+  width: 22px;
+  text-align: center;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.layer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layer-btn {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
 /* ------------------------------------------------------------ isi blok */
 .pcard {
   position: relative;

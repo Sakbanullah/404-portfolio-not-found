@@ -1,3 +1,7 @@
+import { API_BASE } from './config.js';
+
+export { fileUrl } from './config.js';
+
 const TOKEN_KEY = 'pc_token';
 
 export const getToken = () => {
@@ -36,7 +40,16 @@ async function request(path, { method = 'GET', body, form, auth = false } = {}) 
     payload = JSON.stringify(body);
   }
 
-  const res = await fetch(`/api${path}`, { method, headers, body: payload });
+  if (!API_BASE) {
+    throw new Error('Alamat API belum dikonfigurasi (VITE_API_URL kosong pada build production)');
+  }
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api${path}`, { method, headers, body: payload });
+  } catch {
+    // fetch hanya melempar untuk kegagalan jaringan/CORS, bukan status HTTP.
+    throw new Error('Server tidak bisa dihubungi. Periksa koneksi atau apakah backend sedang berjalan.');
+  }
   let data = null;
   try {
     data = await res.json();

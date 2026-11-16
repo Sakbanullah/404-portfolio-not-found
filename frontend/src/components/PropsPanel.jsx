@@ -1,4 +1,4 @@
-import { BLENDS, FONTS, TYPE_LABEL } from '../lib/blocks.js';
+import { ANIMATIONS, ANIM_LABEL, BLENDS, FONTS, TYPE_LABEL } from '../lib/blocks.js';
 import {
   AreaField,
   CheckField,
@@ -11,6 +11,7 @@ import {
 
 const fontOptions = FONTS.map((f) => ({ value: f, label: f }));
 const blendOptions = BLENDS.map((b) => ({ value: b, label: b }));
+const animOptions = ANIMATIONS.map((a) => ({ value: a, label: ANIM_LABEL[a] }));
 const weightOptions = [300, 400, 500, 600, 700, 800].map((w) => ({ value: w, label: String(w) }));
 const alignOptions = [
   { value: 'left', label: 'Kiri' },
@@ -208,6 +209,32 @@ export default function PropsPanel({
       </div>
       <RangeField label="Opacity" value={block.opacity} onChange={(v) => onPatch({ opacity: v }, 'opacity')} />
       <hr />
+      <h4>Animasi</h4>
+      <SelectField label="Animasi" value={block.animation || 'none'} options={animOptions} onChange={(v) => onPatch({ animation: v })} />
+      {block.animation && block.animation !== 'none' && (
+        <>
+          <RangeField
+            label="Kecepatan"
+            value={block.animSpeed ?? 1}
+            min={0.5}
+            max={3}
+            step={0.1}
+            onChange={(v) => onPatch({ animSpeed: v }, 'animSpeed')}
+          />
+          <RangeField
+            label="Jeda sebelum mulai"
+            value={block.animDelay ?? 0}
+            min={0}
+            max={5}
+            step={0.1}
+            onChange={(v) => onPatch({ animDelay: v }, 'animDelay')}
+          />
+          <p className="hint small">
+            Animasi berjalan di situs publik dan mode remix. Di editor, nyalakan lewat tombol
+            "Pratinjau animasi" di atas.
+          </p>
+        </>
+      )}
       <TextField label="Nama layer" value={block.name} maxLength={60} onChange={(v) => onPatch({ name: v }, 'name')} />
       {!remix && (
         <CheckField

@@ -1,5 +1,5 @@
 import BlockContent from './BlockContent.jsx';
-import { blockProps } from '../lib/blocks.js';
+import { ENTRANCE, blockProps } from '../lib/blocks.js';
 import { sortedByZ, updateBlock } from '../lib/layoutOps.js';
 
 // hx/hy: arah handle (-1, 0, 1) terhadap sumbu lokal blok.
@@ -125,9 +125,10 @@ export default function Canvas({ layout, assetsById, selectedId, onSelect, apply
             <div
               key={b.id}
               data-hidden={hidden ? '1' : undefined}
+              data-anim-in={ENTRANCE.includes(b.animation) ? '' : undefined}
               {...blockProps(b)}
               style={{
-                ...blockStyle(b),
+                ...blockProps(b).style,
                 cursor: canEdit(b) ? 'move' : 'default',
                 ...(hidden ? hiddenStyle : null),
               }}
