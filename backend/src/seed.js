@@ -11,7 +11,7 @@ import { validateLayout } from './validate.js';
 /**
  * Mengisi asset awal dan layout bawaan.
  * - Pertama kali dijalankan: otomatis.
- * - Setelah itu hanya jika force = true (npm run seed:reset), yang MENIMPA layout draft dan published.
+ * - Setelah itu hanya jika force = true (`npm run seed -- --reset`), yang MENIMPA layout draft dan published.
  * Starter asset yang belum ada (mis. baru ditambah di versi berikutnya) tetap ditambahkan
  * meski database sudah pernah di-seed; layout tidak disentuh.
  */

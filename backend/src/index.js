@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
+import { cors } from './cors.js';
+import { checkImage } from './files.js';
+import { svgSafe } from './svg.js';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
@@ -21,24 +24,26 @@ if (config.trustProxy) app.set('trust proxy', config.trustProxy);
 
 app.use(
   helmet({
+    // Backend hanya melayani API dan /uploads; tidak ada halaman frontend di sini.
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'data:', 'blob:'],
-        connectSrc: ["'self'", 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'],
+        defaultSrc: ["'none'"],
+        scriptSrc: ["'none'"],
+        styleSrc: ["'none'"],
+        fontSrc: ["'none'"],
+        imgSrc: ["'none'"],
+        connectSrc: ["'none'"],
         objectSrc: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-        frameAncestors: ["'self'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+        frameAncestors: ["'none'"],
         upgradeInsecureRequests: null,
       },
     },
     crossOriginResourcePolicy: { policy: 'same-origin' },
   })
 );
+app.use(cors);
 app.use(express.json({ limit: '600kb' }));
 
 // ---------------------------------------------------------------- rate limits
@@ -53,9 +58,31 @@ const limiter = (windowMs, limit, message, extra = {}) =>
   });
 
 app.use('/api', limiter(15 * 60 * 1000, 600, 'Terlalu banyak permintaan, coba lagi nanti'));
-const loginLimiter = limiter(15 * 60 * 1000, 10, 'Terlalu banyak percobaan login, coba lagi 15 menit lagi', {
-  skipSuccessfulRequests: true,
-});
+// Login GAGAL dihitung per IP DAN per username (hitungan di handler, bukan middleware,
+// agar dibalas 401 biasa). Keberhasilan tidak dihitung sehingga admin tidak terkunci sendiri.
+const LOGIN_WINDOW = 15 * 60 * 1000;
+const LOGIN_MAX = 10;
+const loginAttempts = new Map(); // key -> { count, reset }
+const loginKey = (prefix, value) => `${prefix}:${String(value).toLowerCase().slice(0, 80)}`;
+
+function takeAttempt(key) {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now > entry.reset) {
+    if (loginAttempts.size > 5000) loginAttempts.clear();
+    loginAttempts.set(key, { count: 1, reset: now + LOGIN_WINDOW });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= LOGIN_MAX;
+}
+
+// Satu key bisa sudah dihitung lalu kena tolak oleh key kedua; serahkan kembali jatahnya
+// supaya IP bermasalah tidak menghabiskan kuota username lain.
+function refundAttempt(key) {
+  const entry = loginAttempts.get(key);
+  if (entry && entry.count > 0) entry.count -= 1;
+}
 const remixLimiter = limiter(60 * 60 * 1000, 30, 'Terlalu banyak permintaan');
 
 // ---------------------------------------------------------------- helpers
@@ -82,18 +109,32 @@ const publicAsset = (r) => ({
 // ---------------------------------------------------------------- auth
 const adminHash = bcrypt.hashSync(config.adminPassword, 10);
 
-app.post('/api/auth/login', loginLimiter, async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body ?? {};
   if (typeof username !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ error: 'Username dan password wajib diisi' });
   }
-  // Selalu jalankan bcrypt supaya waktu respons tidak membocorkan apakah username benar.
+  // bcrypt selalu dijalankan supaya waktu respons tidak membocorkan apakah username benar.
+  // Login dengan password benar TIDAK dihitung, jadi admin tidak bisa terkunci sendiri.
   const passwordOk = await bcrypt.compare(password, adminHash);
   const userOk = username === config.adminUser;
-  if (!passwordOk || !userOk) return res.status(401).json({ error: 'Username atau password salah' });
+  if (passwordOk && userOk) {
+    loginAttempts.delete(loginKey('user', username));
+    const token = jwt.sign({ role: 'admin' }, config.jwtSecret, { algorithm: 'HS256', expiresIn: '2h' });
+    return res.json({ token });
+  }
 
-  const token = jwt.sign({ role: 'admin' }, config.jwtSecret, { algorithm: 'HS256', expiresIn: '12h' });
-  res.json({ token });
+  // Hanya percobaan GAGAL yang dihitung: per IP dan per username, dinaikkan sebelum
+  // respons sehingga tebakan paralel tidak bisa melewati batas. Dibalas 401 (bukan 429)
+  // supaya status tidak membocorkan apakah akun ada.
+  const ipKey = loginKey('ip', req.ip);
+  const userKey = loginKey('user', username);
+  if (!takeAttempt(ipKey)) return res.status(401).json({ error: 'Username atau password salah' });
+  if (!takeAttempt(userKey)) {
+    refundAttempt(ipKey);
+    return res.status(401).json({ error: 'Username atau password salah' });
+  }
+  return res.status(401).json({ error: 'Username atau password salah' });
 });
 
 function requireAdmin(req, res, next) {
@@ -204,24 +245,6 @@ admin.post('/templates/:id/apply', (req, res) => {
 // ---- assets
 const ALLOWED_CATEGORIES = ['shape', 'icon', 'background', 'photo', 'misc'];
 
-function sniffImage(buf) {
-  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-    return { ext: 'png', mime: 'image/png' };
-  }
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return { ext: 'jpg', mime: 'image/jpeg' };
-  }
-  if (buf.length >= 6 && buf.subarray(0, 4).toString('ascii') === 'GIF8') {
-    return { ext: 'gif', mime: 'image/gif' };
-  }
-  if (buf.length >= 12 && buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP') {
-    return { ext: 'webp', mime: 'image/webp' };
-  }
-  const head = buf.subarray(0, 4096).toString('utf8').trimStart();
-  if (head.startsWith('<') && /<svg[\s>]/i.test(head)) return { ext: 'svg', mime: 'image/svg+xml' };
-  return null;
-}
-
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } });
 
 admin.get('/assets', (_req, res) => {
@@ -241,8 +264,12 @@ admin.post(
     if (!req.file) return res.status(400).json({ error: 'File wajib diunggah' });
 
     // Tipe file ditentukan dari isi file, bukan dari nama/mimetype kiriman klien.
-    const kind = sniffImage(req.file.buffer);
-    if (!kind) return res.status(400).json({ error: 'Format tidak didukung (PNG, JPG, GIF, WebP, atau SVG)' });
+    const kind = checkImage(req.file.buffer);
+    if (kind.error) return res.status(400).json({ error: kind.error });
+    if (kind.ext === 'svg') {
+      const safe = svgSafe(req.file.buffer);
+      if (!safe.ok) return res.status(400).json({ error: safe.reason });
+    }
 
     const rawName = typeof req.body.name === 'string' ? req.body.name.trim() : '';
     const fallback = path.parse(req.file.originalname || 'asset').name;
@@ -298,59 +325,37 @@ admin.delete('/assets/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-admin.get('/templates', (_req, res) => {
-  res.json(TEMPLATES.map(({ id, name, description }) => ({ id, name, description })));
-});
-
-admin.post('/templates/:id/apply', (req, res) => {
-  const template = findTemplate(req.params.id);
-  if (!template) return res.status(404).json({ error: 'Template tidak dikenal' });
-
-  const ids = {};
-  for (const row of db.prepare('SELECT id, filename FROM assets').all()) {
-    const m = /^starter-(.+)\.svg$/.exec(row.filename);
-    if (m) ids[m[1]] = row.id;
-  }
-  // Template boleh merujuk asset starter apa pun; yang belum ada hanya bisa muncul bila seed
-  // dijalankan versi lama. Validasi tetap menjadi penjaga terakhir.
-  const result = validateLayout(template.build(ids), { assetExists });
-  if (!result.ok) return res.status(500).json({ error: `Template tidak valid: ${result.error}` });
-
-  db.prepare("UPDATE pages SET draft_json = ?, updated_at = ? WHERE slug = 'home'").run(
-    JSON.stringify(result.layout),
-    new Date().toISOString()
-  );
-  res.json(pageState(getPageRow()));
-});
-
 app.use('/api/admin', admin);
 
 // ---------------------------------------------------------------- files
 // Nama file acak, jadi aman di-cache lama. CSP sandbox mencegah SVG berisi script
-// dieksekusi bila dibuka langsung di browser.
+// dieksekusi bila dibuka langsung di browser. Hanya rute ini yang boleh dibaca
+// lintas origin (gambar di frontend + Export PNG html-to-image); header CORS
+// dipasang ulang karena express.static hanya mengirim header dari config sendiri.
+const uploadHeaders = (res) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // SVG starter tidak memakai <style>/style=; upload dibatasi svgSafe() sehingga
+  // tidak perlu melonggarkan style-src di sini.
+  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'none'; sandbox");
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Vary', 'Origin');
+  const origin = res.req?.headers.origin;
+  if (origin && config.corsOrigins.includes(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
+};
 app.use(
   '/uploads',
   express.static(config.uploadDir, {
     index: false,
     dotfiles: 'deny',
     maxAge: '30d',
-    setHeaders(res) {
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
-    },
+    setHeaders: uploadHeaders,
   })
 );
+// Respons 304 bisa dibuat dari cache internal tanpa memanggil setHeaders.
+app.use('/uploads', (_req, res) => res.status(404).json({ error: 'File tidak ditemukan' }));
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan' }));
-
-// Production: sajikan hasil build frontend.
-if (fs.existsSync(path.join(config.clientDist, 'index.html'))) {
-  app.use(express.static(config.clientDist, { index: false, maxAge: '1h' }));
-  app.use((req, res, next) => {
-    if (req.method !== 'GET') return next();
-    res.sendFile(path.join(config.clientDist, 'index.html'));
-  });
-}
+app.get('/', (_req, res) => res.json({ ok: true, service: 'portfolio-canvas-api' }));
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {

@@ -14,6 +14,15 @@ function required(name, devFallback) {
   return devFallback;
 }
 
+// Daftar origin frontend yang boleh memanggil API. Tanpa "*" dan tanpa cookie.
+function corsOrigins() {
+  const raw = required('CORS_ORIGIN', 'http://localhost:5173');
+  return raw
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
 const dataDir = path.resolve(serverRoot, process.env.DATA_DIR || 'data');
 
 export const config = {
@@ -23,7 +32,7 @@ export const config = {
   dataDir,
   dbPath: path.join(dataDir, 'portfolio.db'),
   uploadDir: path.join(dataDir, 'uploads'),
-  clientDist: path.resolve(serverRoot, '../client/dist'),
+  corsOrigins: corsOrigins(),
   adminUser: process.env.ADMIN_USER || 'admin',
   adminPassword: required('ADMIN_PASSWORD', 'admin123'),
   jwtSecret: required('JWT_SECRET', 'dev-only-secret-change-me'),
