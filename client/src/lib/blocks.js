@@ -1,7 +1,6 @@
-export const FONTS = ['Space Grotesk', 'Inter', 'JetBrains Mono', 'Playfair Display', 'Caveat'];
-export const BLENDS = ['normal', 'multiply', 'screen', 'overlay', 'difference', 'soft-light'];
-export const MAX_BLOCKS = 150;
-// Harus sama dengan whitelist di server/src/validate.js.
+// Konstanta + helper murni per tipe blok. Posisi/animasi wrapper ada di blockSkin.js.
+import { normalizeAnimation } from './blockSkin.js';
+
 export const ANIMATIONS = ['none', 'float', 'spin', 'pulse', 'wiggle', 'fade-in', 'slide-up', 'zoom-in'];
 export const ANIM_LABEL = {
   none: 'Tidak ada',
@@ -26,8 +25,11 @@ export const TYPE_LABEL = {
 export const uid = () => `b${Math.random().toString(36).slice(2, 10)}`;
 
 // Hanya http, https, dan mailto yang boleh jadi link (mencegah javascript: URL).
+// Aturan harus sama dengan backend/src/validate.js: backslash/kontrol ditolak, dan HTML
+// berenkode (%3c/%3e) tidak boleh lolos — nilai ini berasal dari server.
 export function safeUrl(value) {
   if (!value) return null;
+  if (/[\\<>`\s\u0000-\u001f]|%3[ce]/i.test(value)) return null;
   try {
     const parsed = new URL(value, window.location.origin);
     return ['http:', 'https:', 'mailto:'].includes(parsed.protocol) ? value : null;
@@ -49,55 +51,35 @@ export function fontStack(name) {
   }
 }
 
-export const ENTRANCE = ['fade-in', 'slide-up', 'zoom-in'];
-
-const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-
-// Nilai animasi yang hilang/asing (misal blok lama atau localStorage lama) dinormalkan ke default.
-export function normalizeAnimation(b) {
-  const speed = Number(b.animSpeed);
-  const delay = Number(b.animDelay);
-  return {
-    animation: ANIMATIONS.includes(b.animation) ? b.animation : 'none',
-    animSpeed: Number.isFinite(speed) ? clamp(speed, 0.5, 3) : 1,
-    animDelay: Number.isFinite(delay) ? clamp(delay, 0, 5) : 0,
-  };
+// Bentuk yang dikirim ke server: absolut, seperti backend/src/validate.js menyimpannya.
+export function normalizeUrl(value) {
+  const safe = safeUrl(value);
+  if (!safe) return '';
+  try {
+    return new URL(safe, window.location.origin).href;
+  } catch {
+    return '';
+  }
 }
 
+// Tipe blok yang punya props.url (lihat PropsPanel).
+const URL_TYPES = new Set(['project', 'button']);
+const withSafeUrls = (b) =>
+  URL_TYPES.has(b.type) && b.props ? { ...b, props: { ...b.props, url: normalizeUrl(b.props.url) } } : b;
+
+export const FONTS = ['Space Grotesk', 'Inter', 'JetBrains Mono', 'Playfair Display', 'Caveat'];
+export const BLENDS = ['normal', 'multiply', 'screen', 'overlay', 'difference', 'soft-light'];
+export const MAX_BLOCKS = 150;
+
+// Didefinisikan di blockSkin.js (dipakai Canvas/Viewer bersama posisi blok).
+export { ENTRANCE, blockProps, normalizeAnimation } from './blockSkin.js';
+
+// Harus sama dengan whitelist di server/src/validate.js.
 export function normalizeLayout(layout) {
-  return { ...layout, blocks: (layout.blocks || []).map((b) => ({ ...b, ...normalizeAnimation(b) })) };
-}
-
-// Kelas wrapper blok (animasi). Jangan ditaruh di dalam objek style: react-dom mengabaikan
-// `className` yang terselip di style, jadi nilainya dipisah dan digabung oleh blokProps().
-export function animClass(b) {
-  const { animation } = normalizeAnimation(b);
-  return animation === 'none' ? undefined : `anim-block anim-${animation}`;
-}
-
-// Gaya posisi yang sama dipakai editor dan halaman publik.
-// CSS hanya menjalankan animasi saat stage punya class "anim-on" (pratinjau admin / halaman
-// publik / remix), sehingga drag di editor tidak kacau.
-export function blockStyle(b) {
-  const anim = normalizeAnimation(b);
   return {
-    position: 'absolute',
-    left: b.x,
-    top: b.y,
-    width: b.width,
-    height: b.height,
-    transform: b.rotation ? `rotate(${b.rotation}deg)` : undefined,
-    opacity: b.opacity,
-    mixBlendMode: b.blend,
-    zIndex: b.zIndex,
-    '--anim-speed': anim.animSpeed,
-    '--anim-delay': `${anim.animDelay}s`,
+    ...layout,
+    blocks: (layout.blocks || []).map((b) => withSafeUrls({ ...b, ...normalizeAnimation(b) })),
   };
-}
-
-// Atribut wrapper blok siap pakai: {...blockProps(b)} di <div> pembungkus.
-export function blockProps(b) {
-  return { className: animClass(b), style: blockStyle(b) };
 }
 
 const TEMPLATES = {
@@ -157,7 +139,7 @@ const TEMPLATES = {
 
 export function createBlock(type, { x = 100, y = 100, props = {}, ...rest } = {}) {
   const t = TEMPLATES[type];
-  return {
+  const block = {
     id: uid(),
     type,
     name: '',
@@ -178,4 +160,5 @@ export function createBlock(type, { x = 100, y = 100, props = {}, ...rest } = {}
     ...rest,
     props: { ...t.props, ...props },
   };
+  return withSafeUrls(block);
 }

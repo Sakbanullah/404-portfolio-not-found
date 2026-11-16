@@ -55,7 +55,10 @@ function bool(v, def) {
 
 function url(v, label) {
   if (v === undefined || v === null || v === '') return '';
-  if (typeof v !== 'string' || v.length > 500 || /[\s\u0000-\u001f]/.test(v)) fail(`${label} tidak valid`);
+  // Backslash diubah browser menjadi "/" (https:\evil.com → https://evil.com), jadi ditolak.
+  if (typeof v !== 'string' || v.length > 500 || /[\\\s\u0000-\u001f]/.test(v) || v.includes('\\')) {
+    fail(`${label} tidak valid`);
+  }
   let parsed;
   try {
     parsed = new URL(v, 'http://placeholder.invalid');
@@ -63,7 +66,11 @@ function url(v, label) {
     fail(`${label} tidak valid`);
   }
   if (!SAFE_PROTOCOLS.has(parsed.protocol)) fail(`${label} hanya boleh http, https, atau mailto`);
-  return v;
+  // Yang disimpan adalah bentuk terurai, bukan string mentah, supaya HTML tidak bisa menyelinap
+  // di query mailto (mis. ?body=<script>…</script>).
+  const out = parsed.href;
+  if (out.length > 500 || /[<>"`]|%3[ce]/i.test(out)) fail(`${label} tidak valid`);
+  return out;
 }
 
 const cleanProps = {
@@ -200,8 +207,21 @@ function clean(input, assetExists) {
   return { version: 1, canvas, blocks };
 }
 
+// Batas kedalaman struktur JSON (objek/array bersarang) supaya payload tidak menghabiskan stack.
+export const MAX_DEPTH = 32;
+
+function tooDeep(value, depth = 0) {
+  if (value === null || typeof value !== 'object') return false;
+  if (depth >= MAX_DEPTH) return true;
+  for (const key of Object.keys(value)) {
+    if (tooDeep(value[key], depth + 1)) return true;
+  }
+  return false;
+}
+
 export function validateLayout(input, { assetExists }) {
   try {
+    if (tooDeep(input)) return { ok: false, error: `Struktur layout terlalu dalam (maks ${MAX_DEPTH} level)` };
     return { ok: true, layout: clean(input, assetExists) };
   } catch (err) {
     if (err instanceof ValidationError) return { ok: false, error: err.message };

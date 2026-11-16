@@ -1,3 +1,7 @@
+/* Font dimuat lewat CSS (bukan <link>), supaya stylesheet-nya same-origin dan
+   Export PNG (html-to-image) bisa membaca aturan @font-face-nya. */
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:wght@400;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
 :root {
   --bg: #0b0f14;
   --panel: #10161d;
@@ -52,6 +56,15 @@ a {
   color: var(--danger);
   font-size: 13px;
   margin: 0;
+}
+
+.app-fatal {
+  max-width: 560px;
+  margin: 15vh auto;
+  padding: 24px;
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+  line-height: 1.6;
 }
 
 .center-msg {
@@ -447,9 +460,9 @@ input[type='checkbox'] {
 .stage.anim-on .anim-wiggle > .anim { animation: pc-wiggle calc(var(--dur) * 2.5) ease-in-out infinite; }
 
 /* Entrance: jalan sekali. Sebelum terlihat blok transparan (tapi tetap mengambil ruang). */
-.stage.anim-on .anim-fade-in:not(:has(> .anim.is-in)) > .anim,
-.stage.anim-on .anim-slide-up:not(:has(> .anim.is-in)) > .anim,
-.stage.anim-on .anim-zoom-in:not(:has(> .anim.is-in)) > .anim {
+.stage.anim-on:not(.editing) .anim-fade-in:not(:has(> .anim.is-in)) > .anim,
+.stage.anim-on:not(.editing) .anim-slide-up:not(:has(> .anim.is-in)) > .anim,
+.stage.anim-on:not(.editing) .anim-zoom-in:not(:has(> .anim.is-in)) > .anim {
   opacity: 0;
 }
 .stage.anim-on .anim-fade-in > .anim { animation: pc-fade-in var(--dur) ease-out 1 both; }
@@ -462,6 +475,7 @@ input[type='checkbox'] {
 .stage.anim-on.editing .anim-slide-up > .anim,
 .stage.anim-on.editing .anim-zoom-in > .anim {
   animation-play-state: running;
+  animation-delay: 0s; /* jeda menunggu scroll tidak relevan di editor */
 }
 
 /* Hormati preferensi pengguna: matikan semua animasi, tampilkan blok apa adanya. */
