@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, clearToken, getToken } from '../api.js';
 import Editor from '../components/Editor.jsx';
-import TemplateModal from '../components/TemplateModal.jsx';
 import { normalizeLayout } from '../lib/blocks.js';
 import { useLayoutState } from '../lib/useLayoutState.js';
 import Login from './Login.jsx';
@@ -116,8 +115,7 @@ function AdminEditor({ initial, assets, setAssets, onLogout }) {
   const [unpublished, setUnpublished] = useState(initial.unpublished);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState('');
-  const [templateOpen, setTemplateOpen] = useState(false);
-
+  
   const dirty = useMemo(() => JSON.stringify(history.layout) !== savedJson, [history.layout, savedJson]);
 
   useEffect(() => {
@@ -153,15 +151,6 @@ function AdminEditor({ initial, assets, setAssets, onLogout }) {
 
   // Terapkan template: server hanya menimpa draft, lalu muat ke editor lewat history.reset
   // (langkah ini masuk riwayat undo, jadi Ctrl+Z bisa mengembalikan layout sebelumnya).
-  async function applyTemplate(id) {
-    const result = await api.adminApplyTemplate(id);
-    const layout = normalizeLayout(result.layout);
-    history.reset(layout);
-    // Draft di server sudah berisi layout template, jadi editor dianggap "tersimpan".
-    setSavedJson(JSON.stringify(layout));
-    setUnpublished(result.unpublished);
-    setToast('Template diterapkan ke draft. Publish untuk menampilkannya di situs.');
-  }
 
   async function publish() {
     if (dirty && !(await save())) return;
@@ -215,7 +204,6 @@ function AdminEditor({ initial, assets, setAssets, onLogout }) {
 
   return (
     <>
-      {templateOpen && <TemplateModal onApply={applyTemplate} onClose={() => setTemplateOpen(false)} />}
       <Editor
         mode="admin"
         history={history}
@@ -230,9 +218,6 @@ function AdminEditor({ initial, assets, setAssets, onLogout }) {
             <Link to="/" className="btn-link" target="_blank" rel="noopener">
               Lihat situs ↗
             </Link>
-            <button type="button" onClick={() => setTemplateOpen(true)} disabled={!!busy}>
-              Template
-            </button>
             <button type="button" onClick={save} disabled={!dirty || !!busy} title="Ctrl+S">
               {busy === 'save' ? 'Menyimpan…' : 'Simpan draft'}
             </button>

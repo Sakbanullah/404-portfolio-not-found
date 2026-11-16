@@ -51,7 +51,6 @@ export default function RemixPage() {
 }
 
 function RemixEditor({ page, assets }) {
-  // Layout tersimpan di localStorage bisa berasal dari versi lama (tanpa field animasi).
   const initial = useMemo(() => normalizeLayout(loadSaved() ?? page.layout), [page]);
   const history = useLayoutState(initial);
   const editorRef = useRef(null);
@@ -91,8 +90,6 @@ function RemixEditor({ page, assets }) {
     const node = editorRef.current?.getStage();
     if (!node) return;
     setExporting(true);
-    // Matikan animasi dulu supaya hasil PNG tidak menangkap blok di tengah gerakan / belum muncul.
-    editorRef.current?.setAnimating(false);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     try {
       const { toPng } = await import('html-to-image');
@@ -114,7 +111,6 @@ function RemixEditor({ page, assets }) {
       console.error(err);
       setToast('Gagal membuat PNG, coba lagi');
     } finally {
-      editorRef.current?.setAnimating(true);
       setExporting(false);
     }
   }

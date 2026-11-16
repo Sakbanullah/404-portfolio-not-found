@@ -298,31 +298,6 @@ admin.delete('/assets/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-admin.get('/templates', (_req, res) => {
-  res.json(TEMPLATES.map(({ id, name, description }) => ({ id, name, description })));
-});
-
-admin.post('/templates/:id/apply', (req, res) => {
-  const template = findTemplate(req.params.id);
-  if (!template) return res.status(404).json({ error: 'Template tidak dikenal' });
-
-  const ids = {};
-  for (const row of db.prepare('SELECT id, filename FROM assets').all()) {
-    const m = /^starter-(.+)\.svg$/.exec(row.filename);
-    if (m) ids[m[1]] = row.id;
-  }
-  // Template boleh merujuk asset starter apa pun; yang belum ada hanya bisa muncul bila seed
-  // dijalankan versi lama. Validasi tetap menjadi penjaga terakhir.
-  const result = validateLayout(template.build(ids), { assetExists });
-  if (!result.ok) return res.status(500).json({ error: `Template tidak valid: ${result.error}` });
-
-  db.prepare("UPDATE pages SET draft_json = ?, updated_at = ? WHERE slug = 'home'").run(
-    JSON.stringify(result.layout),
-    new Date().toISOString()
-  );
-  res.json(pageState(getPageRow()));
-});
-
 app.use('/api/admin', admin);
 
 // ---------------------------------------------------------------- files
